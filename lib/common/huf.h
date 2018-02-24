@@ -223,7 +223,7 @@ typedef enum {
 *   If it uses hufTable it does not modify hufTable or repeat.
 *   If it doesn't, it sets *repeat = HUF_repeat_none, and it sets hufTable to the table used.
 *   If preferRepeat then the old table will always be used if valid. */
-size_t HUF_compress4X_repeat(void* dst, size_t dstSize, const void* src, size_t srcSize, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize, HUF_CElt* hufTable, HUF_repeat* repeat, int preferRepeat);  /**< `workSpace` must be a table of at least HUF_WORKSPACE_SIZE_U32 unsigned */
+size_t HUF_compress4X_repeat(void* dst, size_t dstSize, const void* src, size_t srcSize, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize, HUF_CElt* hufTable, HUF_repeat* repeat, int preferRepeat, int bmi2);  /**< `workSpace` must be a table of at least HUF_WORKSPACE_SIZE_U32 unsigned */
 
 /** HUF_buildCTable_wksp() :
  *  Same as HUF_buildCTable(), but using externally allocated scratch buffer.
@@ -279,7 +279,7 @@ size_t HUF_compress1X_usingCTable(void* dst, size_t dstSize, const void* src, si
 *   If it uses hufTable it does not modify hufTable or repeat.
 *   If it doesn't, it sets *repeat = HUF_repeat_none, and it sets hufTable to the table used.
 *   If preferRepeat then the old table will always be used if valid. */
-size_t HUF_compress1X_repeat(void* dst, size_t dstSize, const void* src, size_t srcSize, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize, HUF_CElt* hufTable, HUF_repeat* repeat, int preferRepeat);  /**< `workSpace` must be a table of at least HUF_WORKSPACE_SIZE_U32 unsigned */
+size_t HUF_compress1X_repeat(void* dst, size_t dstSize, const void* src, size_t srcSize, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize, HUF_CElt* hufTable, HUF_repeat* repeat, int preferRepeat, int bmi2);  /**< `workSpace` must be a table of at least HUF_WORKSPACE_SIZE_U32 unsigned */
 
 size_t HUF_decompress1X2 (void* dst, size_t dstSize, const void* cSrc, size_t cSrcSize);   /* single-symbol decoder */
 size_t HUF_decompress1X4 (void* dst, size_t dstSize, const void* cSrc, size_t cSrcSize);   /* double-symbol decoder */
@@ -294,6 +294,14 @@ size_t HUF_decompress1X4_DCtx_wksp(HUF_DTable* dctx, void* dst, size_t dstSize, 
 size_t HUF_decompress1X_usingDTable(void* dst, size_t maxDstSize, const void* cSrc, size_t cSrcSize, const HUF_DTable* DTable);   /**< automatic selection of sing or double symbol decoder, based on DTable */
 size_t HUF_decompress1X2_usingDTable(void* dst, size_t maxDstSize, const void* cSrc, size_t cSrcSize, const HUF_DTable* DTable);
 size_t HUF_decompress1X4_usingDTable(void* dst, size_t maxDstSize, const void* cSrc, size_t cSrcSize, const HUF_DTable* DTable);
+
+/* BMI2 variants.
+ * If the CPU has BMI2 support pass bmi2=1, otherwise pass bmi2=0.
+ */
+size_t HUF_decompress1X_usingDTable_bmi2(void* dst, size_t maxDstSize, const void* cSrc, size_t cSrcSize, const HUF_DTable* DTable, int bmi2);
+size_t HUF_decompress1X2_DCtx_wksp_bmi2(HUF_DTable* dctx, void* dst, size_t dstSize, const void* cSrc, size_t cSrcSize, void* workSpace, size_t wkspSize, int bmi2);
+size_t HUF_decompress4X_usingDTable_bmi2(void* dst, size_t maxDstSize, const void* cSrc, size_t cSrcSize, const HUF_DTable* DTable, int bmi2);
+size_t HUF_decompress4X_hufOnly_wksp_bmi2(HUF_DTable* dctx, void* dst, size_t dstSize, const void* cSrc, size_t cSrcSize, void* workSpace, size_t wkspSize, int bmi2);
 
 #endif /* HUF_STATIC_LINKING_ONLY */
 

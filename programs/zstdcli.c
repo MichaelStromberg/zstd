@@ -106,7 +106,7 @@ static int usage(const char* programName)
     DISPLAY( "          with no FILE, or when FILE is - , read standard input\n");
     DISPLAY( "Arguments : \n");
 #ifndef ZSTD_NOCOMPRESS
-    DISPLAY( " -#     : # compression level (1-%d, default:%d) \n", ZSTDCLI_CLEVEL_MAX, ZSTDCLI_CLEVEL_DEFAULT);
+    DISPLAY( " -#     : # compression level (1-%d, default: %d) \n", ZSTDCLI_CLEVEL_MAX, ZSTDCLI_CLEVEL_DEFAULT);
 #endif
 #ifndef ZSTD_NODECOMPRESS
     DISPLAY( " -d     : decompression \n");
@@ -133,13 +133,13 @@ static int usage_advanced(const char* programName)
     DISPLAY( " -l     : print information about zstd compressed files \n");
 #ifndef ZSTD_NOCOMPRESS
     DISPLAY( "--ultra : enable levels beyond %i, up to %i (requires more memory)\n", ZSTDCLI_CLEVEL_MAX, ZSTD_maxCLevel());
-    DISPLAY( "--long[=#]  : enable long distance matching with given window log (default : %u)\n", g_defaultMaxWindowLog);
+    DISPLAY( "--long[=#]  : enable long distance matching with given window log (default: %u)\n", g_defaultMaxWindowLog);
 #ifdef ZSTD_MULTITHREAD
-    DISPLAY( " -T#    : use # threads for compression (default:1) \n");
-    DISPLAY( " -B#    : select size of each job (default:0==automatic) \n");
+    DISPLAY( " -T#    : spawns # compression threads (default: 1) \n");
+    DISPLAY( " -B#    : select size of each job (default: 0==automatic) \n");
 #endif
     DISPLAY( "--no-dictID : don't write dictID into header (dictionary compression)\n");
-    DISPLAY( "--[no-]check : integrity check (default:enabled) \n");
+    DISPLAY( "--[no-]check : integrity check (default: enabled) \n");
 #endif
 #ifdef UTIL_HAS_CREATEFILELIST
     DISPLAY( " -r     : operate recursively on directories \n");
@@ -157,9 +157,9 @@ static int usage_advanced(const char* programName)
 #ifndef ZSTD_NODECOMPRESS
     DISPLAY( "--test  : test compressed file integrity \n");
 #if ZSTD_SPARSE_DEFAULT
-    DISPLAY( "--[no-]sparse : sparse mode (default:enabled on file, disabled on stdout)\n");
+    DISPLAY( "--[no-]sparse : sparse mode (default: enabled on file, disabled on stdout)\n");
 #else
-    DISPLAY( "--[no-]sparse : sparse mode (default:disabled)\n");
+    DISPLAY( "--[no-]sparse : sparse mode (default: disabled)\n");
 #endif
 #endif
     DISPLAY( " -M#    : Set a memory usage limit for decompression \n");
@@ -171,15 +171,15 @@ static int usage_advanced(const char* programName)
     DISPLAY( "--train-cover[=k=#,d=#,steps=#] : use the cover algorithm with optional args\n");
     DISPLAY( "--train-legacy[=s=#] : use the legacy algorithm with selectivity (default: %u)\n", g_defaultSelectivityLevel);
     DISPLAY( " -o file : `file` is dictionary name (default: %s) \n", g_defaultDictName);
-    DISPLAY( "--maxdict=# : limit dictionary to specified size (default : %u) \n", g_defaultMaxDictSize);
+    DISPLAY( "--maxdict=# : limit dictionary to specified size (default: %u) \n", g_defaultMaxDictSize);
     DISPLAY( "--dictID=# : force dictionary ID to specified value (default: random)\n");
 #endif
 #ifndef ZSTD_NOBENCH
     DISPLAY( "\n");
     DISPLAY( "Benchmark arguments : \n");
-    DISPLAY( " -b#    : benchmark file(s), using # compression level (default : 1) \n");
+    DISPLAY( " -b#    : benchmark file(s), using # compression level (default: %d) \n", ZSTDCLI_CLEVEL_DEFAULT);
     DISPLAY( " -e#    : test all compression levels from -bX to # (default: 1)\n");
-    DISPLAY( " -i#    : minimum evaluation time in seconds (default : 3s) \n");
+    DISPLAY( " -i#    : minimum evaluation time in seconds (default: 3s) \n");
     DISPLAY( " -B#    : cut file into independent blocks of size # (default: no block)\n");
     DISPLAY( "--priority=rt : set process priority to real-time \n");
 #endif
@@ -366,21 +366,22 @@ typedef enum { zom_compress, zom_decompress, zom_test, zom_bench, zom_train, zom
 int main(int argCount, const char* argv[])
 {
     int argNb,
-        forceStdout=0,
-        followLinks=0,
-        main_pause=0,
-        nextEntryIsDictionary=0,
-        operationResult=0,
-        nextArgumentIsOutFileName=0,
-        nextArgumentIsMaxDict=0,
-        nextArgumentIsDictID=0,
-        nextArgumentsAreFiles=0,
-        ultra=0,
+        followLinks = 0,
+        forceStdout = 0,
         lastCommand = 0,
-        nbThreads = 1,
-        setRealTimePrio = 0,
+        ldmFlag = 0,
+        main_pause = 0,
+        nbWorkers = 0,
+        nextArgumentIsOutFileName = 0,
+        nextArgumentIsMaxDict = 0,
+        nextArgumentIsDictID = 0,
+        nextArgumentsAreFiles = 0,
+        nextEntryIsDictionary = 0,
+        operationResult = 0,
         separateFiles = 0,
-        ldmFlag = 0;
+        setRealTimePrio = 0,
+        singleThread = 0,
+        ultra=0;
     unsigned bench_nbSeconds = 3;   /* would be better if this value was synchronized from bench */
     size_t blockSize = 0;
     zstd_operation_mode operation = zom_compress;
@@ -418,11 +419,13 @@ int main(int argCount, const char* argv[])
     if (filenameTable==NULL) { DISPLAY("zstd: %s \n", strerror(errno)); exit(1); }
     filenameTable[0] = stdinmark;
     g_displayOut = stderr;
-
     programName = lastNameFromPath(programName);
+#ifdef ZSTD_MULTITHREAD
+    nbWorkers = 1;
+#endif
 
     /* preset behaviors */
-    if (exeNameMatch(programName, ZSTD_ZSTDMT)) nbThreads=0;
+    if (exeNameMatch(programName, ZSTD_ZSTDMT)) nbWorkers=0;
     if (exeNameMatch(programName, ZSTD_UNZSTD)) operation=zom_decompress;
     if (exeNameMatch(programName, ZSTD_CAT)) { operation=zom_decompress; forceStdout=1; FIO_overwriteMode(); outFileName=stdoutmark; g_displayLevel=1; }   /* supports multiple formats */
     if (exeNameMatch(programName, ZSTD_ZCAT)) { operation=zom_decompress; forceStdout=1; FIO_overwriteMode(); outFileName=stdoutmark; g_displayLevel=1; }  /* behave like zcat, also supports multiple formats */
@@ -481,6 +484,7 @@ int main(int argCount, const char* argv[])
                     if (!strcmp(argument, "--keep")) { FIO_setRemoveSrcFile(0); continue; }
                     if (!strcmp(argument, "--rm")) { FIO_setRemoveSrcFile(1); continue; }
                     if (!strcmp(argument, "--priority=rt")) { setRealTimePrio = 1; continue; }
+                    if (!strcmp(argument, "--single-thread")) { nbWorkers = 0; singleThread = 1; continue; }
 #ifdef ZSTD_GZCOMPRESS
                     if (!strcmp(argument, "--format=gzip")) { suffix = GZ_EXTENSION; FIO_setCompressionType(FIO_gzipCompression); continue; }
 #endif
@@ -515,7 +519,7 @@ int main(int argCount, const char* argv[])
                       continue;
                     }
 #endif
-                    if (longCommandWArg(&argument, "--threads=")) { nbThreads = readU32FromChar(&argument); continue; }
+                    if (longCommandWArg(&argument, "--threads=")) { nbWorkers = readU32FromChar(&argument); continue; }
                     if (longCommandWArg(&argument, "--memlimit=")) { memLimit = readU32FromChar(&argument); continue; }
                     if (longCommandWArg(&argument, "--memory=")) { memLimit = readU32FromChar(&argument); continue; }
                     if (longCommandWArg(&argument, "--memlimit-decompress=")) { memLimit = readU32FromChar(&argument); continue; }
@@ -648,7 +652,7 @@ int main(int argCount, const char* argv[])
                         /* nb of threads (hidden option) */
                     case 'T':
                         argument++;
-                        nbThreads = readU32FromChar(&argument);
+                        nbWorkers = readU32FromChar(&argument);
                         break;
 
                         /* Dictionary Selection level */
@@ -716,11 +720,13 @@ int main(int argCount, const char* argv[])
     /* Welcome message (if verbose) */
     DISPLAYLEVEL(3, WELCOME_MESSAGE);
 
-    if (nbThreads == 0) {
-        /* try to guess */
-        nbThreads = UTIL_countPhysicalCores();
-        DISPLAYLEVEL(3, "Note: %d physical core(s) detected \n", nbThreads);
+#ifdef ZSTD_MULTITHREAD
+    if ((nbWorkers==0) && (!singleThread)) {
+        /* automatically set # workers based on # of reported cpus */
+        nbWorkers = UTIL_countPhysicalCores();
+        DISPLAYLEVEL(3, "Note: %d physical core(s) detected \n", nbWorkers);
     }
+#endif
 
     g_utilDisplayLevel = g_displayLevel;
     if (!followLinks) {
@@ -763,7 +769,7 @@ int main(int argCount, const char* argv[])
         BMK_setNotificationLevel(g_displayLevel);
         BMK_setSeparateFiles(separateFiles);
         BMK_setBlockSize(blockSize);
-        BMK_setNbThreads(nbThreads);
+        BMK_setNbWorkers(nbWorkers);
         BMK_setRealTime(setRealTimePrio);
         BMK_setNbSeconds(bench_nbSeconds);
         BMK_setLdmFlag(ldmFlag);
@@ -791,7 +797,7 @@ int main(int argCount, const char* argv[])
         zParams.dictID = dictID;
         if (cover) {
             int const optimize = !coverParams.k || !coverParams.d;
-            coverParams.nbThreads = nbThreads;
+            coverParams.nbThreads = nbWorkers;
             coverParams.zParams = zParams;
             operationResult = DiB_trainFromFiles(outFileName, maxDictSize, filenameTable, filenameIdx, blockSize, NULL, &coverParams, optimize);
         } else {
@@ -835,7 +841,7 @@ int main(int argCount, const char* argv[])
     FIO_setNotificationLevel(g_displayLevel);
     if (operation==zom_compress) {
 #ifndef ZSTD_NOCOMPRESS
-        FIO_setNbThreads(nbThreads);
+        FIO_setNbWorkers(nbWorkers);
         FIO_setBlockSize((U32)blockSize);
         FIO_setLdmFlag(ldmFlag);
         FIO_setLdmHashLog(g_ldmHashLog);

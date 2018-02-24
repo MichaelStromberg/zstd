@@ -53,7 +53,7 @@ static const U32 nbTestsDefault = 30000;
 /*-************************************
 *  Display Macros
 **************************************/
-#define DISPLAY(...)          fprintf(stdout, __VA_ARGS__)
+#define DISPLAY(...)          fprintf(stderr, __VA_ARGS__)
 #define DISPLAYLEVEL(l, ...)  if (g_displayLevel>=l) { DISPLAY(__VA_ARGS__); }
 static U32 g_displayLevel = 2;
 
@@ -63,7 +63,7 @@ static UTIL_time_t g_displayClock = UTIL_TIME_INITIALIZER;
 #define DISPLAYUPDATE(l, ...) if (g_displayLevel>=l) { \
             if ((UTIL_clockSpanMicro(g_displayClock) > g_refreshRate) || (g_displayLevel>=4)) \
             { g_displayClock = UTIL_getTime(); DISPLAY(__VA_ARGS__); \
-            if (g_displayLevel>=4) fflush(stdout); } }
+            if (g_displayLevel>=4) fflush(stderr); } }
 
 
 #undef MIN
@@ -226,7 +226,7 @@ static int FUZ_mallocTests(unsigned seed, double compressibility, unsigned part)
                 ZSTD_outBuffer out = { outBuffer, outSize, 0 };
                 ZSTD_inBuffer in = { inBuffer, inSize, 0 };
                 CHECK_Z( ZSTD_CCtx_setParameter(cctx, ZSTD_p_compressionLevel, (U32)compressionLevel) );
-                CHECK_Z( ZSTD_CCtx_setParameter(cctx, ZSTD_p_nbThreads, nbThreads) );
+                CHECK_Z( ZSTD_CCtx_setParameter(cctx, ZSTD_p_nbWorkers, nbThreads) );
                 while ( ZSTD_compress_generic(cctx, &out, &in, ZSTD_e_end) ) {}
                 ZSTD_freeCCtx(cctx);
                 DISPLAYLEVEL(3, "compress_generic,-T%u,end level %i : ",
@@ -246,7 +246,7 @@ static int FUZ_mallocTests(unsigned seed, double compressibility, unsigned part)
                 ZSTD_outBuffer out = { outBuffer, outSize, 0 };
                 ZSTD_inBuffer in = { inBuffer, inSize, 0 };
                 CHECK_Z( ZSTD_CCtx_setParameter(cctx, ZSTD_p_compressionLevel, (U32)compressionLevel) );
-                CHECK_Z( ZSTD_CCtx_setParameter(cctx, ZSTD_p_nbThreads, nbThreads) );
+                CHECK_Z( ZSTD_CCtx_setParameter(cctx, ZSTD_p_nbWorkers, nbThreads) );
                 CHECK_Z( ZSTD_compress_generic(cctx, &out, &in, ZSTD_e_continue) );
                 while ( ZSTD_compress_generic(cctx, &out, &in, ZSTD_e_end) ) {}
                 ZSTD_freeCCtx(cctx);
@@ -763,28 +763,31 @@ static int basicUnitTests(U32 seed, double compressibility)
         DISPLAYLEVEL(3, "OK \n");
 
         DISPLAYLEVEL(3, "test%3i : compress with static CDict : ", testNb++);
-        {   ZSTD_compressionParameters const cParams = ZSTD_getCParams(1, CNBuffSize, dictSize);
-            size_t const cdictSize = ZSTD_estimateCDictSize_advanced(dictSize, cParams, ZSTD_dlm_byCopy);
-            void* const cdictBuffer = malloc(cdictSize);
-            if (cdictBuffer==NULL) goto _output_error;
-            {   const ZSTD_CDict* const cdict = ZSTD_initStaticCDict(
-                                            cdictBuffer, cdictSize,
-                                            dictBuffer, dictSize,
-                                            ZSTD_dlm_byCopy, ZSTD_dm_auto,
-                                            cParams);
-                if (cdict == NULL) {
-                    DISPLAY("ZSTD_initStaticCDict failed ");
-                    goto _output_error;
-                }
-                cSize = ZSTD_compress_usingCDict(cctx,
-                                compressedBuffer, compressedBufferSize,
-                                CNBuffer, CNBuffSize, cdict);
-                if (ZSTD_isError(cSize)) {
-                    DISPLAY("ZSTD_compress_usingCDict failed ");
-                    goto _output_error;
-            }   }
-            free(cdictBuffer);
-        }
+        {   int const maxLevel = ZSTD_maxCLevel();
+            int level;
+            for (level = 1; level <= maxLevel; ++level) {
+                ZSTD_compressionParameters const cParams = ZSTD_getCParams(level, CNBuffSize, dictSize);
+                size_t const cdictSize = ZSTD_estimateCDictSize_advanced(dictSize, cParams, ZSTD_dlm_byCopy);
+                void* const cdictBuffer = malloc(cdictSize);
+                if (cdictBuffer==NULL) goto _output_error;
+                {   const ZSTD_CDict* const cdict = ZSTD_initStaticCDict(
+                                                cdictBuffer, cdictSize,
+                                                dictBuffer, dictSize,
+                                                ZSTD_dlm_byCopy, ZSTD_dm_auto,
+                                                cParams);
+                    if (cdict == NULL) {
+                        DISPLAY("ZSTD_initStaticCDict failed ");
+                        goto _output_error;
+                    }
+                    cSize = ZSTD_compress_usingCDict(cctx,
+                                    compressedBuffer, compressedBufferSize,
+                                    CNBuffer, MIN(10 KB, CNBuffSize), cdict);
+                    if (ZSTD_isError(cSize)) {
+                        DISPLAY("ZSTD_compress_usingCDict failed ");
+                        goto _output_error;
+                }   }
+                free(cdictBuffer);
+        }   }
         DISPLAYLEVEL(3, "OK (%u bytes : %.2f%%)\n", (U32)cSize, (double)cSize/CNBuffSize*100);
 
         DISPLAYLEVEL(3, "test%3i : ZSTD_compress_usingCDict_advanced, no contentSize, no dictID : ", testNb++);
@@ -1206,7 +1209,7 @@ static int basicUnitTests(U32 seed, double compressibility)
     if (strcmp("No error detected", ZSTD_getErrorName(ZSTD_error_GENERIC)) != 0) goto _output_error;
     DISPLAYLEVEL(3, "OK \n");
 
-    DISPLAYLEVEL(4, "test%3i : testing ZSTD dictionary sizes : ", testNb++);
+    DISPLAYLEVEL(3, "test%3i : testing ZSTD dictionary sizes : ", testNb++);
     RDG_genBuffer(CNBuffer, CNBuffSize, compressibility, 0., seed);
     {
         size_t const size = MIN(128 KB, CNBuffSize);
@@ -1227,6 +1230,7 @@ static int basicUnitTests(U32 seed, double compressibility)
         ZSTD_freeCDict(lgCDict);
         ZSTD_freeCCtx(cctx);
     }
+    DISPLAYLEVEL(3, "OK \n");
 
 _end:
     free(CNBuffer);

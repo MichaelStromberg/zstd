@@ -116,10 +116,16 @@ the last one takes effect.
     Note: If `windowLog` is set to larger than 27, `--long=windowLog` or
     `--memory=windowSize` needs to be passed to the decompressor.
 * `-T#`, `--threads=#`:
-    Compress using `#` threads (default: 1).
+    Compress using `#` working threads (default: 1).
     If `#` is 0, attempt to detect and use the number of physical CPU cores.
-    In all cases, the nb of threads is capped to ZSTDMT_NBTHREADS_MAX==256.
+    In all cases, the nb of threads is capped to ZSTDMT_NBTHREADS_MAX==200.
     This modifier does nothing if `zstd` is compiled without multithread support.
+* `--single-thread`:
+    Does not spawn a thread for compression, use caller thread instead.
+    This is the only available mode when multithread support is disabled.
+    In this mode, compression is serialized with I/O.
+    (This is different from `-T1`, which spawns 1 compression thread in parallel of I/O).
+    Single-thread mode also features lower memory usage.
 * `-D file`:
     use `file` as Dictionary to compress or decompress FILE(s)
 * `--nodictID`:
@@ -137,7 +143,7 @@ the last one takes effect.
     to make files with many zeroes smaller on disk.
     Creating sparse files may save disk space and speed up decompression by
     reducing the amount of disk I/O.
-    default : enabled when output is into a file,
+    default: enabled when output is into a file,
     and disabled when output is stdout.
     This setting overrides default and can force sparse mode over stdout.
 * `--rm`:
@@ -163,7 +169,7 @@ the last one takes effect.
     suppress warnings, interactivity, and notifications.
     specify twice to suppress errors too.
 * `-C`, `--[no-]check`:
-    add integrity check computed from uncompressed data (default : enabled)
+    add integrity check computed from uncompressed data (default: enabled)
 * `--`:
     All arguments after `--` are treated as files
 
@@ -171,12 +177,12 @@ the last one takes effect.
 DICTIONARY BUILDER
 ------------------
 `zstd` offers _dictionary_ compression,
-useful for very small files and messages.
-It's possible to train `zstd` with some samples,
+which greatly improves efficiency on small files and messages.
+It's possible to train `zstd` with a set of samples,
 the result of which is saved into a file called a `dictionary`.
-Then during compression and decompression, reference the same dictionary.
-It will improve compression ratio of small files.
-Typical gains range from 10% (at 64KB) to x5 better (at <1KB).
+Then during compression and decompression, reference the same dictionary,
+using command `-D dictionaryFileName`.
+Compression of small files similar to the sample set will be greatly improved.
 
 * `--train FILEs`:
     Use FILEs as training set to create a dictionary.
@@ -192,6 +198,10 @@ Typical gains range from 10% (at 64KB) to x5 better (at <1KB).
     Dictionary saved into `file` (default name: dictionary).
 * `--maxdict=#`:
     Limit dictionary to specified size (default: 112640).
+* `-#`:
+    Use `#` compression level during training (optional).
+    Will generate statistics more tuned for selected compression level,
+    resulting in a _small_ compression ratio improvement for this level.
 * `-B#`:
     Split input files in blocks of size # (default: no split)
 * `--dictID=#`:
@@ -252,7 +262,7 @@ BENCHMARK
 * `-e#`:
     benchmark file(s) using multiple compression levels, from `-b#` to `-e#` (inclusive)
 * `-i#`:
-    minimum evaluation time, in seconds (default : 3s), benchmark mode only
+    minimum evaluation time, in seconds (default: 3s), benchmark mode only
 * `-B#`, `--block-size=#`:
     cut file(s) into independent blocks of size # (default: no block)
 * `--priority=rt`:
